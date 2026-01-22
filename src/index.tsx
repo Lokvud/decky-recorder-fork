@@ -8,11 +8,8 @@ import {
 	Dropdown,
 	DropdownOption,
 	SingleDropdownOption,
-	Navigation,
 	ToggleField,
-	SliderField,
-	gamepadDialogClasses,
-	joinClassNames
+	SliderField
 } from "decky-frontend-lib";
 
 import {
@@ -45,24 +42,18 @@ class DeckyRecorderLogic
 	}
 
 	getAppName = () => {
-		// Try modern Navigation API first
 		try {
-			const app = Navigation.GetCurrentApp?.();
-			if (app?.display_name) {
-				return app.display_name;
-			}
-		} catch (e) {
-			// Navigation API not available
-		}
+			// Try to get app name from window globals
+			const appName =
+				(window as any)?.appStore?.GetAppOverviewByGameID?.((window as any)?.appStore?.GetActiveAppID?.())?.display_name ||
+				(window as any)?.Router?.MainRunningApp?.display_name ||
+				null;
 
-		// Fallback to Router (deprecated but might still work)
-		try {
-			const mainApp = (window as any).Router?.MainRunningApp;
-			if (mainApp?.display_name) {
-				return mainApp.display_name;
+			if (appName) {
+				return appName;
 			}
 		} catch (e) {
-			// Router not available
+			console.log("Could not get app name:", e);
 		}
 
 		return "Decky-Recorder";
@@ -252,11 +243,11 @@ const DeckyRecorder: FC<{ serverAPI: ServerAPI, logic: DeckyRecorderLogic }> = (
 			const app_name = logic.getAppName();
 			await serverAPI.callPluginMethod('start_capturing', {app_name: app_name});
 
-			// Close side menus using modern Navigation API
+			// Close side menus
 			try {
-				Navigation.CloseSideMenus();
+				(window as any)?.SteamClient?.Window?.BringToFront?.();
 			} catch (e) {
-				console.log("Navigation.CloseSideMenus not available:", e);
+				console.log("Could not close menus:", e);
 			}
 		} else {
 			setCapturing(false);
