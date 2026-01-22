@@ -11,8 +11,13 @@ import { name } from "./plugin.json";
 export default defineConfig({
   input: './src/index.tsx',
   plugins: [
-    commonjs(),
-    nodeResolve(),
+    commonjs({
+      include: /node_modules/,
+      transformMixedEsModules: true,
+    }),
+    nodeResolve({
+      preferBuiltins: false,
+    }),
     typescript(),
     json(),
     replace({
@@ -34,7 +39,7 @@ export default defineConfig({
     },
     format: 'iife',
     exports: 'default',
-    sourcemap: 'inline',
     inlineDynamicImports: true,
+    compact: true,
   },
 });
