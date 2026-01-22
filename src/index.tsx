@@ -8,10 +8,11 @@ import {
 	Dropdown,
 	DropdownOption,
 	SingleDropdownOption,
-	Router,
 	Navigation,
 	ToggleField,
-	SliderField
+	SliderField,
+	gamepadDialogClasses,
+	joinClassNames
 } from "decky-frontend-lib";
 
 import {
@@ -43,10 +44,32 @@ class DeckyRecorderLogic
 		});
 	}
 
+	getAppName = () => {
+		// Try modern Navigation API first
+		try {
+			const app = Navigation.GetCurrentApp?.();
+			if (app?.display_name) {
+				return app.display_name;
+			}
+		} catch (e) {
+			// Navigation API not available
+		}
+
+		// Fallback to Router (deprecated but might still work)
+		try {
+			const mainApp = (window as any).Router?.MainRunningApp;
+			if (mainApp?.display_name) {
+				return mainApp.display_name;
+			}
+		} catch (e) {
+			// Router not available
+		}
+
+		return "Decky-Recorder";
+	}
+
 	saveRollingRecording = async  (duration: number) => {
-		const app_name = (Router as any).MainRunningApp?.display_name ||
-		                 (Navigation as any).GetCurrentApp?.()?.display_name ||
-		                 "Decky-Recorder";
+		const app_name = this.getAppName();
 		const res = await this.serverAPI.callPluginMethod('save_rolling_recording', { clip_duration: duration, app_name: app_name});
 		let r = (res.result as number)
 		if (r > 0) {
@@ -90,43 +113,21 @@ class DeckyRecorderLogic
 
 	handleButtonInput = async (val: any[]) => {
 		/*
-		R2 0
-		L2 1
-		R1 2
-		R2 3
-		Y  4
-		B  5
-		X  6
-		A  7
-		UP 8
-		Right 9
-		Left 10
-		Down 11
-		Select 12
-		Steam 13
-		Start 14
-		QAM  ???
-		L5 15
-		R5 16*/
+		Button mapping:
+		R2 0, L2 1, R1 2, L1 3
+		Y 4, B 5, X 6, A 7
+		UP 8, Right 9, Left 10, Down 11
+		Select 12, Steam 13, Start 14
+		L5 15, R5 16
+		*/
 		for (const inputs of val) {
 			if (Date.now() - this.pressedAt < 2000) {
 				continue;
 			}
+			// Check for Steam (bit 13) + Start (bit 14) combo
 			if (inputs.ulButtons && inputs.ulButtons & (1 << 13) && inputs.ulButtons & (1 << 14)) {
 				this.pressedAt = Date.now();
-				// DisableHomeAndQuickAccessButtons removed in newer versions
-				try {
-					(Router as any).DisableHomeAndQuickAccessButtons?.();
-				} catch (e) {
-					console.log("DisableHomeAndQuickAccessButtons not available");
-				}
-				setTimeout(() => {
-					try {
-						(Router as any).EnableHomeAndQuickAccessButtons?.();
-					} catch (e) {
-						console.log("EnableHomeAndQuickAccessButtons not available");
-					}
-				}, 1000)
+
 				const isRolling = await this.serverAPI.callPluginMethod("is_rolling", {});
 				if (isRolling.result as boolean) {
 					await this.saveRollingRecording(30);
@@ -248,15 +249,14 @@ const DeckyRecorder: FC<{ serverAPI: ServerAPI, logic: DeckyRecorderLogic }> = (
 	const recordingButtonPress = async () => {
 		if (isCapturing === false) {
 			setCapturing(true);
-			const app_name = (Router as any).MainRunningApp?.display_name ||
-			                 (Navigation as any).GetCurrentApp?.()?.display_name ||
-			                 "Decky-Recorder";
+			const app_name = logic.getAppName();
 			await serverAPI.callPluginMethod('start_capturing', {app_name: app_name});
+
+			// Close side menus using modern Navigation API
 			try {
-				Router.CloseSideMenus();
+				Navigation.CloseSideMenus();
 			} catch (e) {
-				console.log("CloseSideMenus not available, using Navigation");
-				(Navigation as any).CloseSideMenus?.();
+				console.log("Navigation.CloseSideMenus not available:", e);
 			}
 		} else {
 			setCapturing(false);
@@ -461,15 +461,18 @@ const DeckyRecorder: FC<{ serverAPI: ServerAPI, logic: DeckyRecorderLogic }> = (
 
 export default definePlugin((serverApi: ServerAPI) => {
 	let logic = new DeckyRecorderLogic(serverApi);
+
+	// Register controller input handler with optional chaining for safety
 	const input_register = window?.SteamClient?.Input?.RegisterForControllerStateChanges?.(
 		logic.handleButtonInput
 	);
-	//Router.MainRunningApp?.display_name
+
 	return {
 		title: <div className={staticClasses.Title}>Decky Recorder</div>,
 		content: <DeckyRecorder serverAPI={serverApi} logic={logic} />,
 		icon: <FaVideo />,
 		onDismount() {
+			// Safely unregister controller input handler
 			input_register?.unregister?.();
 		},
 		alwaysRender: true
