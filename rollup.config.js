@@ -16,7 +16,7 @@ export default defineConfig({
     typescript(),
     json(),
     replace({
-      preventAssignment: false,
+      preventAssignment: true,
       'process.env.NODE_ENV': JSON.stringify('production'),
     }),
     importAssets({
@@ -30,9 +30,11 @@ export default defineConfig({
     globals: {
       react: 'SP_REACT',
       'react-dom': 'SP_REACTDOM',
-      'decky-frontend-lib': "DFL"
+      'decky-frontend-lib': 'DFL'
     },
     format: 'iife',
     exports: 'default',
+    sourcemap: 'inline',
+    inlineDynamicImports: true,
   },
 });
