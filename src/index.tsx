@@ -9,12 +9,13 @@ import {
 	DropdownOption,
 	SingleDropdownOption,
 	Router,
+	Navigation,
 	ToggleField,
 	SliderField
 } from "decky-frontend-lib";
 
 import {
-	VFC,
+	FC,
 	useState,
 	useEffect
 } from "react";
@@ -43,7 +44,10 @@ class DeckyRecorderLogic
 	}
 
 	saveRollingRecording = async  (duration: number) => {
-		const res = await this.serverAPI.callPluginMethod('save_rolling_recording', { clip_duration: duration, app_name: Router.MainRunningApp?.display_name});
+		const app_name = (Router as any).MainRunningApp?.display_name ||
+		                 (Navigation as any).GetCurrentApp?.()?.display_name ||
+		                 "Decky-Recorder";
+		const res = await this.serverAPI.callPluginMethod('save_rolling_recording', { clip_duration: duration, app_name: app_name});
 		let r = (res.result as number)
 		if (r > 0) {
 			await this.notify("Saved clip");
@@ -110,9 +114,18 @@ class DeckyRecorderLogic
 			}
 			if (inputs.ulButtons && inputs.ulButtons & (1 << 13) && inputs.ulButtons & (1 << 14)) {
 				this.pressedAt = Date.now();
-				(Router as any).DisableHomeAndQuickAccessButtons();
+				// DisableHomeAndQuickAccessButtons removed in newer versions
+				try {
+					(Router as any).DisableHomeAndQuickAccessButtons?.();
+				} catch (e) {
+					console.log("DisableHomeAndQuickAccessButtons not available");
+				}
 				setTimeout(() => {
-					(Router as any).EnableHomeAndQuickAccessButtons();
+					try {
+						(Router as any).EnableHomeAndQuickAccessButtons?.();
+					} catch (e) {
+						console.log("EnableHomeAndQuickAccessButtons not available");
+					}
 				}, 1000)
 				const isRolling = await this.serverAPI.callPluginMethod("is_rolling", {});
 				if (isRolling.result as boolean) {
@@ -127,7 +140,7 @@ class DeckyRecorderLogic
 
 }
 
-const DeckyRecorder: VFC<{ serverAPI: ServerAPI, logic: DeckyRecorderLogic }> = ({ serverAPI, logic }) => {
+const DeckyRecorder: FC<{ serverAPI: ServerAPI, logic: DeckyRecorderLogic }> = ({ serverAPI, logic }) => {
 
 	const [isCapturing, setCapturing] = useState<boolean>(false);
 
@@ -235,8 +248,16 @@ const DeckyRecorder: VFC<{ serverAPI: ServerAPI, logic: DeckyRecorderLogic }> = 
 	const recordingButtonPress = async () => {
 		if (isCapturing === false) {
 			setCapturing(true);
-			await serverAPI.callPluginMethod('start_capturing', {app_name: Router.MainRunningApp?.display_name});
-			Router.CloseSideMenus();
+			const app_name = (Router as any).MainRunningApp?.display_name ||
+			                 (Navigation as any).GetCurrentApp?.()?.display_name ||
+			                 "Decky-Recorder";
+			await serverAPI.callPluginMethod('start_capturing', {app_name: app_name});
+			try {
+				Router.CloseSideMenus();
+			} catch (e) {
+				console.log("CloseSideMenus not available, using Navigation");
+				(Navigation as any).CloseSideMenus?.();
+			}
 		} else {
 			setCapturing(false);
 			await serverAPI.callPluginMethod('stop_capturing', {});
